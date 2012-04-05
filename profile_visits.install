@@ -1,0 +1,53 @@
+<?php
+
+/**
+ * @file
+ * Contains install and update functions for Profile Visits.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function profile_visits_install() {
+  db_query("UPDATE {system} SET weight = 11 WHERE name = 'profile_visits'");
+}
+
+/**
+ * Implements hook_schema().
+ */
+function profile_visits_schema() {
+  $schema['users_visits'] = array(
+    'description' => 'Table containing users profile visits',
+    'fields' => array(
+      'uid_host' => array(
+        'description' => 'Uid of the profile visited',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'uid_visitor' => array(
+        'description' => 'Uid of the visitor',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'visited_at' => array(
+        'description' => 'Date of visit',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'host_read' => array(
+        'description' => 'Does the host know about visit',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+      ),
+    ),
+    'indexes' => array(
+      'uid_host' => array('uid_host', 'uid_visitor'),
+    ),
+  );
+
+  return $schema;
+}

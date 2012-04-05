@@ -1,0 +1,5 @@
+name = Profile vists
+description = "Provides user's profile visits."
+core = 7.x
+dependencies[] = user
+dependencies[] = views

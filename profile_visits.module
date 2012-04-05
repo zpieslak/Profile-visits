@@ -1,0 +1,171 @@
+<?php
+
+/**
+ * @file
+ * Profile visits core hooks and functions.
+ */
+
+/**
+ * Implements hook_views_api().
+ */
+function profile_visits_views_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'profile_visits'),
+  );
+}
+
+/**
+ * Implements hook_permission().
+ */
+function profile_visits_permission() {
+  return array(
+    'access own visits' => array(
+      'title' => t('View own visits'),
+      'description' => t('User may see visits on his profile.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function profile_visits_menu_alter(&$items) {
+  // Modify title.
+  $items['user/%views_arg/visits']['title callback'] = 'profile_visits_title_callback';
+  $items['user/%views_arg/visits']['title arguments'] = array(1);
+
+  // Modify access callback
+  $items['user/%views_arg/visits']['access callback'] = 'profile_visits_access';
+  $items['user/%views_arg/visits']['access arguments'] = array(1);
+}
+
+/**
+ * Menu access callback; limit access to user visits pages.
+ *
+ * @param int $uid_host
+ *   uid of user's profile being viewed
+ */
+function profile_visits_access($uid_host) {
+  return ((($GLOBALS['user']->uid == $uid_host) && user_access('access own visits')) || user_access('administer users')) && $uid_host > 0;
+}
+
+/**
+ * Implements hook_user_view().
+ */
+function profile_visits_user_view($account, $view_mode, $langcode) {
+  global $user;
+
+  // Record a profile visit.
+  if ($user->uid > 1 && $user->uid != $account->uid) {
+    profile_visits_query_save_visit($account->uid, $user->uid);
+
+    $cid = 'uid_host_count:' . $account->uid;
+    cache_clear_all($cid, 'cache');
+  }
+}
+
+/**
+ * Implements hook_cron().
+ */
+function profile_visits_cron() {
+  profile_visits_query_delete_visits($time = strtotime('-1 month'));
+}
+
+/**
+ * Return title in singular or plural form.
+ *
+ * @param int $uid_host
+ *   uid of user's profile being viewed
+ */
+function profile_visits_title_callback($uid_host) {
+  if ($GLOBALS['user']->uid == $uid_host) {
+    $count = profile_visits_query_get_visits_count($uid_host);
+
+    if ($count > 0) {
+      return format_plural($count, 'Visit (1 new)', 'Visits (@count new)');
+    }
+  }
+
+  return t('Visits');
+}
+
+/**
+ * Save user visit
+ *
+ * @param int $uid_host
+ *   uid of user profile being viewed
+ * @param int $uid_visitor
+ *   uid of visitor
+ * @param bool $host_read
+ *   true/false if user knows that his profile was viewed
+ **/
+function profile_visits_query_save_visit($uid_host, $uid_visitor, $host_read = FALSE) {
+  $query = db_merge('users_visits');
+  $query->key(array(
+    'uid_host' => $uid_host,
+    'uid_visitor' => $uid_visitor,
+  ));
+  $query->fields(array(
+    'visited_at' => time(),
+    'host_read' => (int) $host_read,
+  ));
+  $query->execute();
+}
+
+/**
+ * Update user visit
+ *
+ * @param int $uid_host
+ *   uid of user profile being viewed
+ * @param int $host_read
+ *   true/false if user knows that his profile was viewed
+ */
+function profile_visits_query_update_visit_read($uid_host, $host_read) {
+  $query = db_update('users_visits');
+  $query->fields(array(
+    'host_read' => $host_read,
+  ));
+  $query->condition('uid_host', $uid_host);
+  $query->execute();
+}
+
+/**
+ * Get visits for current user
+ *
+ * @param int $uid_host
+ *   uid of user profile being viewed
+ * @param bool $host_read
+ *   true/false if user knows that his profile was viewed
+ */
+function profile_visits_query_get_visits_count($uid_host, $host_read = FALSE) {
+  // Check if object is cached.
+  $cid = 'uid_host_count:' . $uid_host;
+  if ($cached = cache_get($cid)) {
+    return $cached->data;
+  }
+
+  $query = db_query("SELECT COUNT(uid_host) FROM {users_visits} WHERE uid_host = :uid_host AND host_read = :host_read", array(
+    ':uid_host' => $uid_host,
+    ':host_read' => $host_read,
+  ));
+
+  $result = $query->fetchField();
+  cache_set($cid, $result);
+
+  return $result;
+}
+
+/**
+ * Delete old visits
+ *
+ * @param int $time
+ *   Time before the vists will be deleted
+ *   example: if $time is value of strtotime('-1 month')
+ *   then all visits older 1 month from now will be deleted
+ */
+function profile_visits_query_delete_visits($time) {
+  $query = db_delete('users_visits');
+  $query->condition('visited_at', $time, '<');
+  $query->execute();
+}
